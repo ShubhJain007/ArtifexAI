@@ -1,378 +1,320 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { Header } from "./Header";
+import { Sidebar } from "./Sidebar";
 import { SeverityBadge } from "./SeverityBadge";
 import { RiskLevelBadge } from "./RiskLevelBadge";
-import { Button } from "./ui/button";
-import { Download, FileText, ArrowLeft } from "lucide-react";
+import { Download, FileText, AlertTriangle, ArrowLeft, Shield, CheckCircle2 } from "lucide-react";
 import type { AuditResultsResponse, Finding } from "../lib/api";
 
-interface TocItem {
-  id: string;
-  label: string;
-  level: number;
-}
+interface TocItem { id: string; label: string; level: number }
 
-function buildTableOfContents(findings: Finding[]): TocItem[] {
+function buildToc(findings: Finding[]): TocItem[] {
   const toc: TocItem[] = [
-    { id: "executive-summary", label: "Executive Summary", level: 1 },
-    { id: "methodology", label: "Methodology", level: 1 },
-    { id: "scope", label: "Scope & Coverage", level: 1 },
-    { id: "findings", label: "Findings", level: 1 },
+    { id:"executive-summary", label:"Executive Summary",  level:1 },
+    { id:"methodology",       label:"Methodology",        level:1 },
+    { id:"scope",             label:"Scope & Coverage",   level:1 },
+    { id:"findings",          label:"Detailed Findings",  level:1 },
   ];
-
-  findings.forEach((f, idx) => {
-    toc.push({
-      id: `finding-${idx + 1}`,
-      label: `${f.id}: ${f.title}`,
-      level: 2,
-    });
-  });
-
+  findings.forEach((f,i) => toc.push({ id:`finding-${i+1}`, label:`${f.id} — ${f.title}`, level:2 }));
   toc.push(
-    { id: "recommendations", label: "Recommendations", level: 1 },
-    { id: "appendix", label: "Appendix", level: 1 },
-    { id: "queries", label: "Query Log", level: 2 },
-    { id: "evidence", label: "Evidence Archive", level: 2 },
+    { id:"recommendations", label:"Recommendations",  level:1 },
+    { id:"appendix",        label:"Appendix",          level:1 },
+    { id:"queries",         label:"Query Log",         level:2 },
   );
-
   return toc;
 }
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" });
+
+function getCachedResults(): AuditResultsResponse | null {
+  try { return JSON.parse(localStorage.getItem("artifex_last_results") || "null"); } catch { return null; }
 }
 
 export function ReportPreview() {
   const location = useLocation();
   const navigate = useNavigate();
-  const state = location.state as { auditId?: string; results?: AuditResultsResponse } | null;
-  const auditId = state?.auditId;
-  const results = state?.results;
+  const state    = location.state as { auditId?: string; results?: AuditResultsResponse } | null;
+  const auditId  = state?.auditId ?? localStorage.getItem("lastAuditId") ?? undefined;
+  // Use results from router state, or fall back to localStorage cache
+  const results  = state?.results ?? getCachedResults() ?? undefined;
+  const [active, setActive] = useState("executive-summary");
 
-  const [activeSection, setActiveSection] = useState("executive-summary");
-
-  if (!results || !results.findings) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <main className="max-w-[1440px] mx-auto px-8 py-8">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-6 py-4">
-            <p className="font-medium text-yellow-800 mb-1">No report data available</p>
-            <p className="text-sm text-yellow-700 mb-4">
-              Navigate here from the Audit Results page to generate a report.
-            </p>
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate("/")}>
-              <ArrowLeft className="w-4 h-4" />
-              Back to Home
-            </Button>
+  if (!results?.findings) return (
+    <div style={{ display:"flex", height:"100vh" }}>
+      <Sidebar />
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", background:"#f0f4f8" }}>
+        <div style={{ maxWidth:420, padding:"20px 24px", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:10 }}>
+          <div style={{ display:"flex", gap:9, alignItems:"center", marginBottom:8 }}>
+            <AlertTriangle style={{ width:16, height:16, color:"#d97706" }} />
+            <span style={{ fontWeight:700, color:"#92400e" }}>No Report Data</span>
           </div>
-        </main>
+          <p style={{ fontSize:13, color:"#78350f", marginBottom:12 }}>Navigate here from the Audit Results page.</p>
+          <button onClick={() => navigate("/")} style={{ display:"flex", alignItems:"center", gap:6, fontSize:13, color:"#2563eb", background:"transparent", border:"1px solid #bfdbfe", borderRadius:6, padding:"6px 12px", cursor:"pointer" }}>
+            <ArrowLeft style={{ width:13, height:13 }} />Back to Home
+          </button>
+        </div>
       </div>
-    );
-  }
+    </div>
+  );
 
   const { findings, stats, summary } = results;
-  const today = formatDate(new Date());
-  const allQueries = findings.flatMap((f) => f.queries);
-  const uniqueQueries = [...new Set(allQueries)];
+  const today  = fmtDate(new Date());
+  const allQ   = [...new Set(findings.flatMap(f => f.queries))];
+  const crits  = findings.filter(f => f.severity === "critical").length;
+  const highs  = findings.filter(f => f.severity === "high").length;
+  const meds   = findings.filter(f => f.severity === "medium").length;
+  const lows   = findings.filter(f => f.severity === "low").length;
+  const toc    = buildToc(findings);
 
-  const criticalCount = findings.filter((f) => f.severity === "critical").length;
-  const highCount = findings.filter((f) => f.severity === "high").length;
-  const mediumCount = findings.filter((f) => f.severity === "medium").length;
-  const lowCount = findings.filter((f) => f.severity === "low").length;
-
-  const tableOfContents = buildTableOfContents(findings);
-
-  const handleDownload = (format: string) => {
-    console.log(`Downloading report as ${format}`);
-  };
-
-  const scrollToSection = (sectionId: string) => {
-    setActiveSection(sectionId);
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+  const scroll = (id: string) => {
+    setActive(id);
+    document.getElementById(id)?.scrollIntoView({ behavior:"smooth", block:"start" });
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
+    <div style={{ display:"flex", height:"100vh", background:"#f0f4f8" }}>
+      <Sidebar />
 
-      <main className="max-w-[1440px] mx-auto px-8 py-8">
-        <div className="flex gap-6">
-          {/* Table of Contents Sidebar */}
-          <div className="w-64 flex-shrink-0">
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm sticky top-8">
-              <div className="px-4 py-4 border-b border-gray-200">
-                <h3 className="text-sm text-gray-900">Table of Contents</h3>
-              </div>
-              <nav className="px-2 py-3 max-h-[calc(100vh-200px)] overflow-y-auto">
-                {tableOfContents.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => scrollToSection(item.id)}
-                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                      item.level === 2 ? "pl-6" : ""
-                    } ${
-                      activeSection === item.id
-                        ? "bg-blue-50 text-blue-700"
-                        : "text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </nav>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+
+        {/* Page header */}
+        <div style={{ background:"#fff", borderBottom:"1px solid #e2e8f0", padding:"0 32px", height:56, display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>Platform / Reports / Audit Report</div>
+            <div style={{ fontSize:16, fontWeight:700, color:"#0f172a" }}>Cybersecurity Due Diligence Report</div>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => window.print()}
+              style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 14px", background:"#fff", border:"1px solid #e2e8f0", borderRadius:7, color:"#475569", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+              <Download style={{ width:13, height:13 }} />Export PDF
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex:1, display:"flex", overflow:"hidden", gap:0 }}>
+
+          {/* TOC */}
+          <div style={{ width:224, flexShrink:0, background:"#fff", borderRight:"1px solid #e2e8f0", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+            <div style={{ padding:"14px 16px", borderBottom:"1px solid #f1f5f9" }}>
+              <span style={{ fontSize:11, fontWeight:700, color:"#94a3b8", letterSpacing:"0.08em" }}>TABLE OF CONTENTS</span>
             </div>
+            <nav style={{ flex:1, overflowY:"auto", padding:"8px 8px" }}>
+              {toc.map(item => (
+                <button key={item.id} onClick={() => scroll(item.id)}
+                  style={{
+                    width:"100%", textAlign:"left", padding: item.level===2 ? "6px 10px 6px 24px" : "7px 10px",
+                    borderRadius:6, border:"none", cursor:"pointer", fontSize: item.level===2?11:12,
+                    fontWeight: active===item.id ? 700 : (item.level===1?600:400),
+                    color: active===item.id ? "#2563eb" : item.level===2 ? "#94a3b8" : "#475569",
+                    background: active===item.id ? "#eff6ff" : "transparent",
+                    display:"block", transition:"all 0.1s", marginBottom:1,
+                    whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+                  }}>
+                  {item.level===2 ? `↳ ${item.label.split("—")[0].trim()}` : item.label}
+                </button>
+              ))}
+            </nav>
           </div>
 
-          {/* Report Content */}
-          <div className="flex-1">
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-              {/* Report Header */}
-              <div className="px-8 py-6 border-b border-gray-200">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h1 className="text-gray-900 mb-2">Cybersecurity Due Diligence Report</h1>
-                    <div className="flex gap-4 text-sm text-gray-600">
-                      {auditId && <span>Audit: {auditId}</span>}
-                      <span>•</span>
-                      <span>Generated: {today}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button onClick={() => handleDownload("pdf")} variant="outline" size="sm" className="gap-2">
-                      <FileText className="w-4 h-4" />
-                      PDF
-                    </Button>
-                    <Button onClick={() => handleDownload("html")} variant="outline" size="sm" className="gap-2">
-                      <Download className="w-4 h-4" />
-                      HTML
-                    </Button>
-                  </div>
-                </div>
+          {/* Report */}
+          <div style={{ flex:1, overflowY:"auto" }}>
+            <div style={{ maxWidth:860, margin:"0 auto", padding:"28px 40px 60px" }}>
 
-                <div className="flex gap-6 pt-4">
+              {/* Report cover */}
+              <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:12, padding:"28px 32px", marginBottom:20, boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between" }}>
                   <div>
-                    <div className="text-sm text-gray-500 mb-1">Generated</div>
-                    <div className="text-gray-900">{today}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500 mb-1">Overall Risk</div>
-                    <RiskLevelBadge level={stats.riskLevel} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Report Body */}
-              <div className="px-8 py-6 space-y-8 max-h-[calc(100vh-300px)] overflow-y-auto">
-                {/* Executive Summary */}
-                <section id="executive-summary">
-                  <h2 className="text-gray-900 mb-4 pb-2 border-b border-gray-200">
-                    Executive Summary
-                  </h2>
-                  <div className="space-y-4 text-gray-700 leading-relaxed">
-                    <p>{summary}</p>
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 my-4">
-                      <h4 className="text-gray-900 mb-3">Key Metrics</h4>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <div className="text-gray-600">Total Findings</div>
-                          <div className="text-2xl text-gray-900 mt-1">{stats.totalFindings}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-600">Evidence Collected</div>
-                          <div className="text-2xl text-gray-900 mt-1">{stats.evidenceCount}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-600">Severity Breakdown</div>
-                          <div className="mt-1 flex gap-2 flex-wrap">
-                            {criticalCount > 0 && <span className="text-sm text-red-900">{criticalCount} Critical</span>}
-                            {highCount > 0 && <span className="text-sm text-orange-700">{highCount} High</span>}
-                            {mediumCount > 0 && <span className="text-sm text-yellow-700">{mediumCount} Medium</span>}
-                            {lowCount > 0 && <span className="text-sm text-blue-700">{lowCount} Low</span>}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-gray-600">Avg Confidence Score</div>
-                          <div className="text-2xl text-gray-900 mt-1">{stats.avgConfidence}%</div>
-                        </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                      <div style={{ width:34, height:34, borderRadius:8, background:"#eff6ff", border:"1px solid #bfdbfe", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <Shield style={{ width:17, height:17, color:"#2563eb" }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize:12, fontWeight:700, color:"#2563eb" }}>ArtifexAI Threat Intelligence</div>
+                        <div style={{ fontSize:10, color:"#94a3b8" }}>Powered by Claude AI Agent</div>
                       </div>
                     </div>
+                    <h1 style={{ fontSize:22, fontWeight:800, color:"#0f172a", margin:"0 0 6px", letterSpacing:"-0.02em" }}>Cybersecurity Due Diligence Report</h1>
+                    <div style={{ fontSize:13, color:"#64748b" }}>M&A Security Assessment — Confidential</div>
                   </div>
-                </section>
-
-                {/* Methodology */}
-                <section id="methodology">
-                  <h2 className="text-gray-900 mb-4 pb-2 border-b border-gray-200">
-                    Methodology
-                  </h2>
-                  <div className="space-y-4 text-gray-700 leading-relaxed">
-                    <p>
-                      This audit employed an automated analysis framework leveraging threat hunting queries, behavioral analytics, and configuration assessments against SIEM data. The methodology follows industry-standard due diligence practices and incorporates MITRE ATT&CK framework mappings.
-                    </p>
-                    <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                      <h4 className="text-gray-900">Analysis Phases</h4>
-                      <ol className="space-y-2 text-sm list-decimal list-inside">
-                        <li><strong>Coverage Assessment:</strong> Validated SIEM data completeness and quality across critical asset categories</li>
-                        <li><strong>Hunt Selection:</strong> Applied threat hunting queries targeting common attack patterns and misconfigurations</li>
-                        <li><strong>Evidence Collection:</strong> Gathered supporting log evidence, event details, and contextual information</li>
-                        <li><strong>Risk Analysis:</strong> Evaluated severity, confidence, and business impact for each finding</li>
-                        <li><strong>Recommendation Development:</strong> Generated remediation guidance based on security best practices</li>
-                      </ol>
-                    </div>
-                    <p>
-                      All queries executed with read-only access credentials. No modifications were made to production systems or data.
-                    </p>
-                  </div>
-                </section>
-
-                {/* Scope & Coverage */}
-                <section id="scope">
-                  <h2 className="text-gray-900 mb-4 pb-2 border-b border-gray-200">
-                    Scope & Coverage
-                  </h2>
-                  <div className="space-y-4 text-gray-700 leading-relaxed">
-                    <p>
-                      The audit scope encompassed all systems forwarding logs to the SIEM instance during the assessment period.
-                      A total of {uniqueQueries.length} unique queries were executed across {findings.length} threat hunting playbooks.
-                    </p>
-                  </div>
-                </section>
-
-                {/* Findings */}
-                <section id="findings">
-                  <h2 className="text-gray-900 mb-4 pb-2 border-b border-gray-200">
-                    Detailed Findings
-                  </h2>
-
-                  {findings.length === 0 && (
-                    <p className="text-gray-500 italic py-4">No findings were identified during this audit.</p>
-                  )}
-
-                  {findings.map((finding, idx) => (
-                    <div key={finding.id} id={`finding-${idx + 1}`} className="mb-8 scroll-mt-8">
-                      <div className="bg-gray-50 rounded-lg p-6 space-y-4">
-                        <div className="flex items-start justify-between">
-                          <h3 className="text-gray-900">{finding.id}: {finding.title}</h3>
-                          <SeverityBadge severity={finding.severity} />
-                        </div>
-
-                        <div>
-                          <h4 className="text-sm text-gray-700 mb-2">Description</h4>
-                          <p className="text-sm text-gray-600 leading-relaxed">
-                            {finding.description}
-                          </p>
-                        </div>
-
-                        <div>
-                          <h4 className="text-sm text-gray-700 mb-2">Affected Entities</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {finding.affectedEntities.map((entity, i) => (
-                              <span key={i} className="px-2 py-1 bg-white border border-gray-200 rounded text-xs font-mono">{entity}</span>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <h4 className="text-sm text-gray-700 mb-2">Evidence ({finding.evidenceCount} items)</h4>
-                          <ul className="space-y-1 text-sm text-gray-600">
-                            {finding.evidence.map((item, i) => (
-                              <li key={i}>• {item}</li>
-                            ))}
-                          </ul>
-                          <p className="text-xs text-gray-500 mt-2">Confidence: {finding.confidence}%</p>
-                        </div>
-
-                        {finding.queries.length > 0 && (
-                          <div>
-                            <h4 className="text-sm text-gray-700 mb-2">Queries Executed</h4>
-                            <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs text-green-400 space-y-1">
-                              {finding.queries.map((q, i) => (
-                                <div key={i}>{q}</div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div>
-                          <h4 className="text-sm text-gray-700 mb-2">Recommendation</h4>
-                          <p className="text-sm text-gray-600 leading-relaxed">
-                            {finding.recommendation}
-                          </p>
-                        </div>
-                      </div>
+                  <RiskLevelBadge level={stats.riskLevel} large />
+                </div>
+                <div style={{ display:"flex", gap:24, marginTop:20, paddingTop:18, borderTop:"1px solid #f1f5f9" }}>
+                  {[
+                    ["Generated",       today],
+                    ["Audit ID",        auditId?.slice(-12).toUpperCase() || "—"],
+                    ["Total Findings",  String(stats.totalFindings)],
+                    ["Avg AI Confidence", `${stats.avgConfidence}%`],
+                    ["Evidence Items",  String(stats.evidenceCount)],
+                  ].map(([k,v]) => (
+                    <div key={k}>
+                      <div style={{ fontSize:10, fontWeight:700, color:"#94a3b8", letterSpacing:"0.07em", marginBottom:3 }}>{k.toUpperCase()}</div>
+                      <div style={{ fontSize:13, fontWeight:600, color:"#0f172a" }}>{v}</div>
                     </div>
                   ))}
-                </section>
+                </div>
+              </div>
 
-                {/* Recommendations */}
-                <section id="recommendations">
-                  <h2 className="text-gray-900 mb-4 pb-2 border-b border-gray-200">
-                    Consolidated Recommendations
-                  </h2>
-                  <div className="space-y-4 text-gray-700 leading-relaxed">
-                    {findings.length === 0 ? (
-                      <p className="text-gray-500 italic">No remediation actions required.</p>
-                    ) : (
-                      <ol className="space-y-4 text-sm list-decimal list-inside">
-                        {findings.map((f) => (
-                          <li key={f.id}>
-                            <strong className="text-gray-900">{f.id} ({f.severity}):</strong>{" "}
-                            {f.recommendation}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
+              {/* Section helper */}
+              {(() => {
+                const Section = ({ id, title, accent = "#2563eb", children }: { id:string; title:string; accent?:string; children:React.ReactNode }) => (
+                  <div id={id} style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:12, marginBottom:16, overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,0.04)" }}>
+                    <div style={{ padding:"14px 24px", borderBottom:"1px solid #f1f5f9", display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ width:3, height:18, borderRadius:2, background:accent }} />
+                      <span style={{ fontSize:15, fontWeight:700, color:"#0f172a" }}>{title}</span>
+                    </div>
+                    <div style={{ padding:"20px 24px" }}>{children}</div>
                   </div>
-                </section>
+                );
 
-                {/* Appendix */}
-                <section id="appendix">
-                  <h2 className="text-gray-900 mb-4 pb-2 border-b border-gray-200">
-                    Appendix
-                  </h2>
+                return (
+                  <>
+                    {/* Executive Summary */}
+                    <Section id="executive-summary" title="Executive Summary">
+                      <p style={{ fontSize:13, color:"#475569", lineHeight:1.8, margin:"0 0 16px" }}>{summary}</p>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                        <div style={{ padding:"14px 16px", background:"#f8fafc", borderRadius:8, border:"1px solid #f1f5f9" }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:10, letterSpacing:"0.07em" }}>SEVERITY BREAKDOWN</div>
+                          {[{l:"Critical",n:crits,c:"#dc2626"},{l:"High",n:highs,c:"#ea580c"},{l:"Medium",n:meds,c:"#d97706"},{l:"Low",n:lows,c:"#16a34a"}].map(s => (
+                            <div key={s.l} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                              <div style={{ width:6, height:6, borderRadius:"50%", background:s.c, flexShrink:0 }} />
+                              <div style={{ flex:1, height:4, borderRadius:99, background:"#f1f5f9", overflow:"hidden" }}>
+                                <div style={{ height:"100%", width:`${stats.totalFindings ? (s.n/stats.totalFindings)*100 : 0}%`, background:s.c, borderRadius:99 }} />
+                              </div>
+                              <span style={{ fontSize:12, color:s.c, fontWeight:700, width:14, textAlign:"right" }}>{s.n}</span>
+                              <span style={{ fontSize:12, color:"#94a3b8", width:44 }}>{s.l}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ padding:"14px 16px", background:"#f8fafc", borderRadius:8, border:"1px solid #f1f5f9" }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:10, letterSpacing:"0.07em" }}>COVERAGE SUMMARY</div>
+                          {[["Playbooks Executed","1"],["Unique SPL Queries",String(allQ.length)],["Analysis Method","AI Agent (Claude)"],["Access Mode","Read-Only"]].map(([k,v]) => (
+                            <div key={k} style={{ display:"flex", justifyContent:"space-between", marginBottom:6, fontSize:12 }}>
+                              <span style={{ color:"#94a3b8" }}>{k}</span>
+                              <span style={{ fontWeight:600, color:"#374151" }}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </Section>
 
-                  <div id="queries" className="mb-6">
-                    <h3 className="text-gray-900 mb-3">Query Log</h3>
-                    <p className="text-sm text-gray-600 mb-3">
-                      {uniqueQueries.length} unique threat hunting queries were executed during this audit.
-                    </p>
-                    {uniqueQueries.length > 0 ? (
-                      <div className="bg-gray-900 rounded-lg p-4 font-mono text-xs text-green-400 space-y-2 max-h-64 overflow-y-auto">
-                        {uniqueQueries.map((q, i) => (
-                          <div key={i}>{q}</div>
+                    {/* Methodology */}
+                    <Section id="methodology" title="Methodology" accent="#7c3aed">
+                      <p style={{ fontSize:13, color:"#475569", lineHeight:1.8, margin:"0 0 14px" }}>
+                        ArtifexAI's AI Agent — built on Anthropic's Claude — autonomously interprets threat hunting playbooks and executes SPL queries against live SIEM data. Every finding is grounded in actual log evidence with traceable query provenance.
+                      </p>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {[
+                          ["01","Coverage Assessment","Validated SIEM connectivity, log source completeness and credential scope"],
+                          ["02","Hunt Selection","Loaded MITRE ATT&CK-aligned threat hunting playbooks tailored to the environment"],
+                          ["03","AI Agent Execution","Claude AI Agent autonomously ran SPL queries, analyzed results, and identified anomalies"],
+                          ["04","Evidence Collection","Raw log entries matched and confidence scores calculated per finding"],
+                          ["05","Risk Assessment","Severity, business impact and remediation priority assessed for each finding"],
+                        ].map(([n,t,d]) => (
+                          <div key={n} style={{ display:"flex", gap:12, padding:"10px 12px", background:"#f8fafc", borderRadius:8 }}>
+                            <span style={{ fontSize:11, fontWeight:800, color:"#bfdbfe", background:"#eff6ff", width:24, height:24, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{n}</span>
+                            <div>
+                              <div style={{ fontSize:13, fontWeight:600, color:"#0f172a", marginBottom:2 }}>{t}</div>
+                              <div style={{ fontSize:12, color:"#64748b" }}>{d}</div>
+                            </div>
+                          </div>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic">No queries recorded.</p>
-                    )}
-                  </div>
+                    </Section>
 
-                  <div id="evidence">
-                    <h3 className="text-gray-900 mb-3">Evidence Archive</h3>
-                    <p className="text-sm text-gray-600">
-                      All supporting evidence including raw log entries, event details, and contextual data has been compiled.
-                      This audit collected {stats.evidenceCount} distinct evidence items across {findings.length} findings.
-                    </p>
-                  </div>
-                </section>
-              </div>
+                    {/* Scope */}
+                    <Section id="scope" title="Scope & Coverage" accent="#0891b2">
+                      <p style={{ fontSize:13, color:"#475569", lineHeight:1.8, margin:0 }}>
+                        The audit covered all systems forwarding logs to the SIEM during the assessment period.
+                        A total of <strong>{allQ.length} unique SPL queries</strong> were executed across <strong>{findings.length} threat hunting playbook{findings.length!==1?"s":""}</strong>.
+                        All operations were performed with read-only credentials — no production systems were modified.
+                      </p>
+                    </Section>
 
-              {/* Report Footer */}
-              <div className="px-8 py-4 border-t border-gray-200 text-center text-sm text-gray-500">
-                <p>Report generated by ArtifexAI | Confidential & Proprietary</p>
-              </div>
+                    {/* Findings */}
+                    <Section id="findings" title={`Detailed Findings (${findings.length})`} accent="#dc2626">
+                      {findings.length === 0
+                        ? <p style={{ fontSize:13, color:"#94a3b8", fontStyle:"italic" }}>No findings were identified during this assessment.</p>
+                        : <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                            {findings.map((f, idx) => (
+                              <div key={f.id} id={`finding-${idx+1}`} style={{ border:"1px solid #f1f5f9", borderRadius:10, overflow:"hidden" }}>
+                                <div style={{ padding:"12px 16px", background:"#f8fafc", borderBottom:"1px solid #f1f5f9", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                    <SeverityBadge severity={f.severity as any} />
+                                    <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>{f.id} — {f.title}</span>
+                                  </div>
+                                  <span style={{ fontSize:12, fontWeight:700, color:"#2563eb" }}>{f.confidence}% confidence</span>
+                                </div>
+                                <div style={{ padding:"14px 16px", display:"flex", flexDirection:"column", gap:12 }}>
+                                  <p style={{ fontSize:13, color:"#475569", lineHeight:1.7, margin:0 }}>{f.description}</p>
+                                  <div>
+                                    <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:6, letterSpacing:"0.06em" }}>AFFECTED ENTITIES</div>
+                                    <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                                      {f.affectedEntities.map((e,i) => <span key={i} style={{ fontSize:12, fontFamily:"monospace", color:"#475569", background:"#f8fafc", border:"1px solid #e2e8f0", padding:"2px 8px", borderRadius:5 }}>{e}</span>)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:6, letterSpacing:"0.06em" }}>KEY EVIDENCE</div>
+                                    <div style={{ background:"#0f172a", borderRadius:8, overflow:"hidden" }}>
+                                      {f.evidence.slice(0,3).map((ev,i) => (
+                                        <div key={i} style={{ padding:"7px 14px", fontSize:11, fontFamily:"monospace", color:"#4ade80", borderBottom:i<2?"1px solid #1e293b":"none", lineHeight:1.5 }}>
+                                          <span style={{ color:"#334155" }}>{String(i+1).padStart(2,"0")} </span>{ev}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:6, letterSpacing:"0.06em" }}>REMEDIATION</div>
+                                    <div style={{ padding:"10px 14px", background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:7, fontSize:13, color:"#166534", lineHeight:1.7 }}>{f.recommendation}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                      }
+                    </Section>
+
+                    {/* Recommendations */}
+                    <Section id="recommendations" title="Consolidated Recommendations" accent="#16a34a">
+                      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                        {findings.map(f => (
+                          <div key={f.id} style={{ display:"flex", gap:12, padding:"12px 14px", background:"#f8fafc", borderRadius:9, border:"1px solid #f1f5f9" }}>
+                            <SeverityBadge severity={f.severity as any} />
+                            <div>
+                              <div style={{ fontSize:13, fontWeight:600, color:"#0f172a", marginBottom:3 }}>{f.title}</div>
+                              <div style={{ fontSize:12, color:"#64748b", lineHeight:1.6 }}>{f.recommendation}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Section>
+
+                    {/* Appendix */}
+                    <Section id="appendix" title="Appendix" accent="#475569">
+                      <div id="queries">
+                        <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:10, letterSpacing:"0.07em" }}>COMPLETE SPL QUERY LOG ({allQ.length} queries)</div>
+                        <div style={{ background:"#0f172a", borderRadius:8, overflow:"hidden" }}>
+                          {allQ.map((q,i) => (
+                            <div key={i} style={{ padding:"8px 16px", fontSize:12, fontFamily:"monospace", color:"#60a5fa", borderBottom:i<allQ.length-1?"1px solid #1e293b":"none", lineHeight:1.6, wordBreak:"break-all" }}>
+                              <span style={{ color:"#334155" }}>{String(i+1).padStart(2,"0")} $ </span>{q}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </Section>
+
+                    {/* Footer */}
+                    <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", fontSize:11, color:"#cbd5e1" }}>
+                      <span>ArtifexAI Threat Intelligence Platform — CONFIDENTIAL</span>
+                      <span>Generated {today} — {auditId?.slice(-12).toUpperCase()}</span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

@@ -3,54 +3,26 @@ import { AlertCircle, AlertTriangle, CheckCircle, ShieldAlert } from "lucide-rea
 
 type RiskLevel = "low" | "medium" | "high" | "critical";
 
-interface RiskLevelBadgeProps {
-  level: RiskLevel;
-  className?: string;
-}
-
-const riskConfig: Record<RiskLevel, { bg: string; text: string; border: string; label: string; icon: typeof AlertCircle }> = {
-  low: {
-    bg: "bg-green-50",
-    text: "text-green-700",
-    border: "border-green-200",
-    label: "Low Risk",
-    icon: CheckCircle,
-  },
-  medium: {
-    bg: "bg-yellow-50",
-    text: "text-yellow-700",
-    border: "border-yellow-200",
-    label: "Medium Risk",
-    icon: AlertTriangle,
-  },
-  high: {
-    bg: "bg-red-50",
-    text: "text-red-700",
-    border: "border-red-200",
-    label: "High Risk",
-    icon: AlertCircle,
-  },
-  critical: {
-    bg: "bg-red-100",
-    text: "text-red-900",
-    border: "border-red-400",
-    label: "Critical Risk",
-    icon: ShieldAlert,
-  },
+const CFG = {
+  low:      { color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", label: "Low Risk",      icon: CheckCircle  },
+  medium:   { color: "#d97706", bg: "#fffbeb", border: "#fde68a", label: "Medium Risk",   icon: AlertTriangle },
+  high:     { color: "#ea580c", bg: "#fff7ed", border: "#fed7aa", label: "High Risk",     icon: AlertCircle  },
+  critical: { color: "#dc2626", bg: "#fef2f2", border: "#fecaca", label: "Critical Risk", icon: ShieldAlert  },
 };
 
-const fallbackConfig = riskConfig.medium;
-
-export function RiskLevelBadge({ level, className = "" }: RiskLevelBadgeProps) {
-  const config = riskConfig[level] ?? fallbackConfig;
-  const Icon = config.icon;
-
+export function RiskLevelBadge({ level, large = false, className = "" }: { level: RiskLevel; large?: boolean; className?: string }) {
+  const c = CFG[level] ?? CFG.medium;
+  const Icon = c.icon;
   return (
-    <div
-      className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border ${config.bg} ${config.text} ${config.border} ${className}`}
-    >
-      <Icon className="w-5 h-5" />
-      <span>{config.label}</span>
-    </div>
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 6,
+      padding: large ? "6px 14px" : "4px 10px",
+      borderRadius: 99, fontSize: large ? 13 : 12, fontWeight: 700,
+      color: c.color, background: c.bg, border: `1px solid ${c.border}`,
+      whiteSpace: "nowrap",
+    }}>
+      <Icon style={{ width: large ? 16 : 13, height: large ? 16 : 13 }} />
+      {c.label}
+    </span>
   );
 }

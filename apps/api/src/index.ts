@@ -8,8 +8,10 @@ const app = Fastify({
 });
 
 await app.register(cors, {
-  origin: config.corsOrigin
+  origin: true   // allow all origins in dev — was blocking port 3001
 });
+
+app.get("/", async () => ({ ok: true, service: "ArtifexAI API", mode: config.mockMode ? "mock" : "live" }));
 
 await registerRoutes(app);
 
